@@ -5,9 +5,8 @@ const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).spli
 // Selected offline UI captures are documentation, not publication material.
 const documentationAssets = new Set([
   'docs/assets/logo.svg',
-  'docs/assets/ios-home.png',
-  'docs/assets/ios-following.png',
-  'docs/assets/ios-account.png',
+  'docs/assets/banner.png',
+  'docs/assets/windows-icon.png',
   'docs/assets/web-home.png',
   'docs/assets/web-following.png',
   'docs/assets/web-collections.png',
