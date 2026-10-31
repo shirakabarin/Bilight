@@ -1,8 +1,9 @@
-<p align="center"><img src="branding/project-mark.svg" width="80" alt="Bilight"></p>
+<p align="center"><img src="docs/assets/windows-icon.png" width="100" alt="Bilight"></p>
 <h1 align="center">Bilight</h1>
 <p align="center"><strong>搜你所想，看你所选。</strong></p>
-<p align="center">一个只保留搜索与关注的 B 站客户端。支持手机端（iPhone／安卓）与通过 Docker 本地部署的电脑客户端。</p>
+<p align="center">一个只保留搜索与关注的纯净 B 站客户端。支持 Windows 独立免安装桌面端、手机端（iPhone／安卓）与本地 Docker 部署。</p>
 <p align="center">
+  <img alt="Windows · 免Docker独立客户端" src="https://img.shields.io/badge/Windows-独立客户端-ff6699?style=flat-square">
   <img alt="手机端 · iPhone / 安卓" src="https://img.shields.io/badge/%E6%89%8B%E6%9C%BA%E7%AB%AF-iPhone%20%2F%20Android-303440?style=flat-square">
   <img alt="Docker" src="https://img.shields.io/badge/Docker-本地部署-76b9db?style=flat-square">
   <img alt="MIT" src="https://img.shields.io/badge/License-MIT-ed7a9e?style=flat-square">
@@ -73,7 +74,22 @@ Bilight 的起点很简单：**我想继续看 B 站，但想由自己决定看�
 
 ## 快速开始
 
-### 电脑端：Docker
+### Windows 电脑端：独立免安装版（推荐）
+
+适合希望在 Windows 电脑上直接双击使用的用户，**完全不需要安装 Docker、Node.js 或任何运行环境**。
+
+1. 前往项目的 [Releases 发行页](https://github.com/zhaominyi190/Bilight/releases) 下载最新版的 `Bilight-v0.1.4-Windows-x64.zip`。
+2. 解压到任意目录（例如 `D:\software\Bilight`）。
+3. 直接双击 `Bilight.exe` 即可启动。
+
+**Windows 专属优化：**
+- **4K 与高画质解锁**：解除原生仅允许 H.264 的限制，支持 HEVC 与 AV1 编解码，完整支持 4K 超清（120）与 1080P 高码率（112）。
+- **60fps 与高刷支持**：优先调度 60 帧率高规格流，并解锁 GPU 硬件渲染与高刷新率支持。
+- **低延迟起播与流畅缓冲**：媒体代理分片升级，前置缓冲时间扩至 30~60 秒，首帧起播提速至 0.5 秒。
+- **纯净自闭环**：所有登录凭据、本地 SQLite 数据库与浏览器缓存严格收敛在安装目录下的 `data/` 文件夹中，退出干净，不产生系统盘垃圾。
+- **单实例运行保护**：重复启动自动唤醒并置顶当前窗口，杜绝端口冲突；自动记忆上次窗口大小和位置。
+
+### 电脑端：Docker 本地部署
 
 需要安装并启动支持 Docker Compose 的容器运行环境。本机已安装 Node.js 时，先克隆项目，生成**自己的本地加密密钥**再启动：
 

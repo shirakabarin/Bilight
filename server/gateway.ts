@@ -453,15 +453,30 @@ export class BiliGateway {
     // Optional metadata has its own route: a slow subtitle service must not gate the first frame.
     const data = await this.transport.request<RecordValue>(`${API}/x/player/wbi/playurl`, { wbi: true, query: { bvid, cid, qn: quality, fnval: 4048, fnver: 0, fourk: 1 } });
     const subtitles: Subtitle[] = [];
-    const dash = object(data.dash), videos = array(dash.video).filter(track => /^avc[13]\./i.test(String(track.codecs))), audios = array(dash.audio).filter(track => /^mp4a\./i.test(String(track.codecs)));
+    const isSupportedVideoCodec = (codecs: string) => /^(?:avc[13]|hev1|hvc1|av01)\./i.test(codecs);
+    const isSupportedAudioCodec = (codecs: string) => /^(?:mp4a|fLaC|ec-3|ac-3)\./i.test(codecs) || !codecs;
+    const dash = object(data.dash);
+    const rawVideos = array(dash.video).filter(track => isSupportedVideoCodec(String(track.codecs)));
+    const dolbyAudio = array(object(dash.dolby).audio);
+    const flacAudio = array(object(dash.flac).audio);
+    const rawAudios = array(dash.audio).concat(dolbyAudio, flacAudio).filter(track => isSupportedAudioCodec(String(track.codecs)));
     const accepted = Array.isArray(data.accept_quality) ? data.accept_quality : [], labels = Array.isArray(data.accept_description) ? data.accept_description : [];
     const label = (id: number) => clean(labels[accepted.indexOf(id)] ?? array(data.support_formats).find(item => number(item.quality) === id)?.new_description ?? `${id}`, 100);
-    if (videos.length) {
-      const ids = [...new Set(videos.map(track => number(track.id)))].sort((a, b) => b - a);
+    if (rawVideos.length) {
+      const ids = [...new Set(rawVideos.map(track => number(track.id)))].sort((a, b) => b - a);
       const selectedId = ids.find(id => id <= quality) ?? ids.at(-1);
-      const selected = videos.filter(track => number(track.id) === selectedId).sort((a, b) => number(b.bandwidth) - number(a.bandwidth))[0];
-      const video = this.dashTrack(selected), audio = audios.length ? this.dashTrack(audios.sort((a, b) => number(b.bandwidth) - number(a.bandwidth))[0]) : undefined;
-      if (!video || (array(dash.audio).length > 0 && !audio)) throw new BiliError('UNSUPPORTED_PLAYBACK', '当前视频没有可用的 AVC/AAC 播放轨道', 422);
+      // For selected quality, prioritize highest bandwidth and highest framerate (e.g. 60fps)
+      const tracksForQuality = rawVideos.filter(track => number(track.id) === selectedId);
+      const trackScore = (track: RecordValue) => {
+        const bw = number(track.bandwidth, 0);
+        const fps = number(String(track.frameRate ?? track.frame_rate).split('/')[0], 30);
+        const codecBonus = /^av01/i.test(String(track.codecs)) ? 200000 : /^h[ev]c1/i.test(String(track.codecs)) ? 100000 : 0;
+        return bw + (fps >= 50 ? 500000 : 0) + codecBonus;
+      };
+      const selected = tracksForQuality.sort((a, b) => trackScore(b) - trackScore(a))[0];
+      const audiosSorted = rawAudios.sort((a, b) => number(b.bandwidth) - number(a.bandwidth));
+      const video = this.dashTrack(selected), audio = audiosSorted.length ? this.dashTrack(audiosSorted[0]) : undefined;
+      if (!video || (rawAudios.length > 0 && !audio)) throw new BiliError('UNSUPPORTED_PLAYBACK', '当前视频没有可用的音视频播放轨道', 422);
       return { cid, quality: video.id, qualities: ids.map(id => ({ id, label: label(id) })), duration: number(dash.duration, number(data.timelength) / 1000), video, ...(audio ? { audio } : {}), subtitles };
     }
     const segments = array(data.durl).map(segment => ({ url: https(segment.url), length: number(segment.length) })).filter(segment => segment.url && segment.length > 0);

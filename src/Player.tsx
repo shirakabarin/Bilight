@@ -107,7 +107,22 @@ export function VideoPlayer({ bvid, cid, poster, startTime = 0, accountMid }: { 
             if (!window.MediaSource && !('ManagedMediaSource' in window)) { setPlayerError('当前浏览器不支持这个视频的 DASH 播放，请尝试更新浏览器或使用 Chrome。'); return; }
             dash?.reset();
             dash = dashjs.MediaPlayer().create();
-            dash.updateSettings({ debug: { logLevel: 0 }, streaming: { abr: { autoSwitchBitrate: { video: false } }, scheduling: { scheduleWhilePaused: true }, buffer: { initialBufferLevel: 1, bufferTimeDefault: 8, bufferTimeAtTopQuality: 12, bufferTimeAtTopQualityLongForm: 16, bufferToKeep: 8 } } });
+            dash.updateSettings({
+              debug: { logLevel: 0 },
+              streaming: {
+                abr: { autoSwitchBitrate: { video: false } },
+                fastSwitchEnabled: true,
+                scheduling: { scheduleWhilePaused: true },
+                buffer: {
+                  initialBufferLevel: 0.5,
+                  bufferTimeDefault: 30,
+                  bufferTimeAtTopQuality: 45,
+                  bufferTimeAtTopQualityLongForm: 60,
+                  bufferToKeep: 30,
+                  stableBufferTime: 20
+                }
+              }
+            });
             dash.initialize(video, source, false);
             dash.on('error', () => { if (!cancelled) setPlayerError('视频流暂时无法加载，请重试或切换清晰度。'); });
           }, mp4(video, source) { dash?.reset(); dash = undefined; video.src = source; } },

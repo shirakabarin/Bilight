@@ -1,24 +1,52 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+
+interface SqliteDb {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    get(...params: unknown[]): unknown;
+    run(...params: unknown[]): unknown;
+  };
+  close(): void;
+  pragma?(pragma: string): unknown;
+}
+
+function createSqliteDb(path: string): SqliteDb {
+  try {
+    const Database = require('better-sqlite3');
+    const db = new Database(path);
+    db.pragma('journal_mode = DELETE');
+    return db;
+  } catch {
+    // Fallback to Node.js built-in sqlite module
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(path);
+    try { db.exec('PRAGMA journal_mode = DELETE'); } catch { /* ignore */ }
+    return db;
+  }
+}
 
 /** Only encrypted values enter SQLite; the key stays in the deployment secret. */
 export class SecretStore {
-  private readonly db: Database.Database;
+  private readonly db: SqliteDb;
   constructor(path: string, private readonly key: Buffer) {
     if (key.length !== 32) throw new Error('BILIGHT_SECRET_KEY 必须解码为 32 字节');
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    this.db = new Database(path);
-    this.db.pragma('journal_mode = DELETE');
+    this.db = createSqliteDb(path);
     this.db.exec('CREATE TABLE IF NOT EXISTS secrets (name TEXT PRIMARY KEY, value BLOB NOT NULL)');
-    if (path !== ':memory:') chmodSync(path, 0o600);
+    if (path !== ':memory:') {
+      try { chmodSync(path, 0o600); } catch { /* ignore on Windows */ }
+    }
   }
   get<T>(name: string): T | undefined {
-    const row = this.db.prepare('SELECT value FROM secrets WHERE name = ?').get(name) as { value: Buffer } | undefined;
+    const row = this.db.prepare('SELECT value FROM secrets WHERE name = ?').get(name) as { value: Uint8Array | Buffer } | undefined;
     if (!row) return undefined;
     try {
-      const data = row.value;
+      const data = Buffer.isBuffer(row.value) ? row.value : Buffer.from(row.value.buffer, row.value.byteOffset, row.value.byteLength);
       const decipher = createDecipheriv('aes-256-gcm', this.key, data.subarray(0, 12));
       decipher.setAAD(Buffer.from(name));
       decipher.setAuthTag(data.subarray(12, 28));

@@ -4,13 +4,13 @@ import type { BiliGateway, PlaybackSource } from './gateway.js';
 
 type RenewedResource = string | { url: string; backups: string[] };
 type Resource = { url: string; backups: string[]; preferred?: string; key: string; kind: 'image' | 'video' | 'audio' | 'subtitle'; createdAt: number; renew?: () => Promise<RenewedResource> };
-const MEDIA_DOMAINS = ['bilivideo.com', 'bilivideo.cn', 'bilivideo.net', 'akamaized.net'];
+const MEDIA_DOMAINS = ['bilivideo.com', 'bilivideo.cn', 'bilivideo.net', 'akamaized.net', 'szbtslb.pw', 'bilicdn1.com'];
 const IMAGE_DOMAINS = ['hdslb.com', 'hdslb.net', 'biliimg.com'];
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const escapeXml = (value: unknown) => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]!));
 const rangeValue = (value: string) => /^\d+-\d+$/.test(value) ? value : '';
 const MEDIA_TYPES = new Set(['video/mp4', 'audio/mp4', 'audio/x-m4a', 'video/x-m4v', 'application/mp4', 'application/octet-stream']);
-const RANGE_CHUNK = 1024 * 1024;
+const RANGE_CHUNK = 2 * 1024 * 1024;
 
 function usableCandidate(response: Response, range?: string): boolean {
   if (response.status === 416) return true;
@@ -59,8 +59,8 @@ function parallelRangeResponse(first: Response, start: number, end: number, tota
     finally { cancellation.signal.removeEventListener('abort', abort); reader.releaseLock(); }
   }
   function fill() {
-    // At most three 1 MiB ranges in flight, plus one chunk in the consumer's stream queue.
-    while (scheduled < count && queue.size < 3 && !cancellation.signal.aborted) {
+    // Up to 6 chunks in flight to saturate network bandwidth and prevent stuttering
+    while (scheduled < count && queue.size < 6 && !cancellation.signal.aborted) {
       const index = scheduled++;
       const pending = chunk(index).catch(error => { cancellation.abort(error); throw error; });
       pending.catch(() => {}); queue.set(index, pending);
