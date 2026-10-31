@@ -41,13 +41,10 @@ ios/ACCEPTANCE.md
 /Legal/
 /video/
 /docs/assets/*
-!/docs/assets/logo.svg
-!/docs/assets/ios-home.png
-!/docs/assets/ios-following.png
-!/docs/assets/ios-account.png
-!/docs/assets/web-home.png
-!/docs/assets/web-following.png
-!/docs/assets/web-collections.png
+!/docs/assets/*.svg
+!/docs/assets/*.png
+!/docs/assets/*.jpg
+!/docs/assets/*.webp
 /ios/Bilight/Demo/*.png
 /ios/Bilight/Demo/*.jpg
 /ios/Bilight/Demo/*.jpeg
