@@ -17,15 +17,14 @@ interface SqliteDb {
 
 function createSqliteDb(path: string): SqliteDb {
   try {
-    const Database = require('better-sqlite3');
-    const db = new Database(path);
-    db.pragma('journal_mode = DELETE');
-    return db;
-  } catch {
-    // Fallback to Node.js built-in sqlite module
     const { DatabaseSync } = require('node:sqlite');
     const db = new DatabaseSync(path);
     try { db.exec('PRAGMA journal_mode = DELETE'); } catch { /* ignore */ }
+    return db;
+  } catch {
+    const Database = require('better-sqlite3');
+    const db = new Database(path);
+    db.pragma('journal_mode = DELETE');
     return db;
   }
 }
