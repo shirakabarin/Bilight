@@ -3,6 +3,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 
+const isMac = process.platform === 'darwin';
+
 // Single-instance lock: ensure only one client runs
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -10,12 +12,17 @@ if (!gotTheLock) {
   process.exit(0);
 }
 
-// 1. Data Directory: neatly encapsulated under software's data directory
-const exeDir = path.dirname(app.getPath('exe'));
-const parentDir = path.dirname(exeDir);
-const dataRoot = path.basename(exeDir).toLowerCase() === 'core'
-  ? path.join(parentDir, 'data')
-  : path.join(exeDir, 'data');
+// 1. Data Directory: portable on Windows, Application Support on macOS
+let dataRoot;
+if (isMac) {
+  dataRoot = path.join(app.getPath('appData'), 'Bilight');
+} else {
+  const exeDir = path.dirname(app.getPath('exe'));
+  const parentDir = path.dirname(exeDir);
+  dataRoot = path.basename(exeDir).toLowerCase() === 'core'
+    ? path.join(parentDir, 'data')
+    : path.join(exeDir, 'data');
+}
 
 const secretsDir = path.join(dataRoot, 'secrets');
 const storageDir = path.join(dataRoot, 'storage');
@@ -35,7 +42,7 @@ process.env.PORT = process.env.PORT || '3880';
 process.env.HOST = '127.0.0.1';
 process.env.NODE_ENV = 'production';
 
-// Redirect all Electron caches, storage, and indexedDB to D:\ drive
+// Redirect Electron caches, storage and session data
 app.setPath('userData', path.join(dataRoot, 'electron_userData'));
 app.setPath('sessionData', path.join(dataRoot, 'electron_sessionData'));
 
@@ -43,13 +50,19 @@ app.setPath('sessionData', path.join(dataRoot, 'electron_sessionData'));
 app.commandLine.appendSwitch('enable-gpu-rasterization');
 app.commandLine.appendSwitch('enable-zero-copy');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
-app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoding,PlatformHEVCDecoderSupport,CanvasOopRasterization,AudioServiceOutOfProcess,D3D11VideoDecoder,D3D11VideoProcessor');
 app.commandLine.appendSwitch('disable-frame-rate-limit');
-app.commandLine.appendSwitch('use-angle', 'd3d11');
 app.commandLine.appendSwitch('enable-accelerated-video-decode');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('high-dpi-support', '1');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
+if (isMac) {
+  app.commandLine.appendSwitch('use-angle', 'metal');
+  app.commandLine.appendSwitch('enable-features', 'CanvasOopRasterization,AudioServiceOutOfProcess');
+} else {
+  app.commandLine.appendSwitch('use-angle', 'd3d11');
+  app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoding,PlatformHEVCDecoderSupport,CanvasOopRasterization,AudioServiceOutOfProcess,D3D11VideoDecoder,D3D11VideoProcessor');
+}
 
 let mainWindow = null;
 let serverInstance = null;
@@ -93,6 +106,57 @@ async function startServer() {
   return port;
 }
 
+function setupMenu() {
+  if (isMac) {
+    const template = [
+      {
+        label: 'Bilight',
+        submenu: [
+          { role: 'about', label: '关于 Bilight' },
+          { type: 'separator' },
+          { role: 'hide', label: '隐藏 Bilight' },
+          { role: 'hideOthers', label: '隐藏其他应用' },
+          { role: 'unhide', label: '显示全部' },
+          { type: 'separator' },
+          { role: 'quit', label: '退出 Bilight' }
+        ]
+      },
+      {
+        label: '编辑',
+        submenu: [
+          { role: 'undo', label: '撤销' },
+          { role: 'redo', label: '重做' },
+          { type: 'separator' },
+          { role: 'cut', label: '剪切' },
+          { role: 'copy', label: '复制' },
+          { role: 'paste', label: '粘贴' },
+          { role: 'selectAll', label: '全选' }
+        ]
+      },
+      {
+        label: '视图',
+        submenu: [
+          { role: 'reload', label: '重新加载' },
+          { role: 'toggleDevTools', label: '开发者工具' },
+          { type: 'separator' },
+          { role: 'togglefullscreen', label: '进入全屏' }
+        ]
+      },
+      {
+        label: '窗口',
+        submenu: [
+          { role: 'minimize', label: '最小化' },
+          { role: 'zoom', label: '缩放' },
+          { role: 'close', label: '关闭窗口' }
+        ]
+      }
+    ];
+    Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  } else {
+    Menu.setApplicationMenu(null);
+  }
+}
+
 function createWindow(port) {
   const iconPath = path.join(__dirname, 'anime-icon.png');
   const state = loadWindowState();
@@ -124,16 +188,17 @@ function createWindow(port) {
   // Keyboard navigation & shortcuts
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
-    if (input.key === 'F11') {
+    const isCmdOrCtrl = isMac ? input.meta : input.control;
+    if (input.key === 'F11' || (isMac && isCmdOrCtrl && input.key.toLowerCase() === 'f')) {
       mainWindow.setFullScreen(!mainWindow.isFullScreen());
       event.preventDefault();
     } else if (input.key === 'Escape' && mainWindow.isFullScreen()) {
       mainWindow.setFullScreen(false);
       event.preventDefault();
-    } else if (input.key === 'F12' || (input.control && input.shift && input.key.toUpperCase() === 'I')) {
+    } else if (input.key === 'F12' || (isCmdOrCtrl && input.shift && input.key.toUpperCase() === 'I')) {
       mainWindow.webContents.toggleDevTools();
       event.preventDefault();
-    } else if (input.key === 'F5' || (input.control && input.key.toUpperCase() === 'R')) {
+    } else if (input.key === 'F5' || (isCmdOrCtrl && input.key.toUpperCase() === 'R')) {
       mainWindow.reload();
       event.preventDefault();
     }
@@ -166,11 +231,18 @@ app.on('second-instance', () => {
 
 app.whenReady().then(async () => {
   try {
+    setupMenu();
     const port = await startServer();
     createWindow(port);
   } catch (err) {
     console.error('Failed to start Bilight Desktop:', err);
     app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (mainWindow === null && serverInstance) {
+    createWindow(Number(process.env.PORT));
   }
 });
 

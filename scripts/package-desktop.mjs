@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, existsSync, rmSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, existsSync, rmSync, renameSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -9,12 +9,10 @@ const coreDir = join(bilightDir, 'core');
 const electronDist = join(root, 'node_modules/electron/dist');
 const appDir = join(coreDir, 'resources/app');
 const iconIco = join(root, 'branding/anime-icon.ico');
-const iconPng = join(root, 'branding/anime-icon.png');
 const rceditExe = join(root, 'node_modules/rcedit/bin/rcedit-x64.exe');
 const cscExe = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
 
 console.log('1. Cleaning D:\\software\\Bilight ...');
-// Delete loose root exe in D:\software if it existed
 const looseExe = join(softwareDir, 'Bilight.exe');
 if (existsSync(looseExe)) {
   rmSync(looseExe, { force: true });
@@ -41,21 +39,32 @@ if (existsSync(defaultApp)) {
   rmSync(defaultApp, { force: true });
 }
 
-console.log('3. Injecting anime icon and version info into core/Bilight.exe ...');
+console.log('3. Slimming: Pruning unused locales (saving ~46MB) ...');
+const localesDir = join(coreDir, 'locales');
+if (existsSync(localesDir)) {
+  const keepLocales = new Set(['zh-CN.pak', 'zh-TW.pak', 'en-US.pak']);
+  for (const file of readdirSync(localesDir)) {
+    if (!keepLocales.has(file)) {
+      rmSync(join(localesDir, file), { force: true });
+    }
+  }
+}
+
+console.log('4. Injecting anime icon and version metadata into core/Bilight.exe ...');
 if (existsSync(rceditExe) && existsSync(iconIco)) {
   execFileSync(rceditExe, [
     coreExe,
     '--set-icon', iconIco,
     '--set-version-string', 'FileDescription', 'Bilight 客户端核心',
     '--set-version-string', 'ProductName', 'Bilight',
-    '--set-version-string', 'CompanyName', 'Ownhelm / Bilight Project',
+    '--set-version-string', 'CompanyName', 'Bilight Project',
     '--set-version-string', 'LegalCopyright', 'MIT License',
-    '--set-file-version', '1.0.0.0',
-    '--set-product-version', '1.0.0.0'
+    '--set-file-version', '0.1.4.0',
+    '--set-product-version', '0.1.4.0'
   ], { stdio: 'inherit' });
 }
 
-console.log('4. Copying Bilight application bundle to core/resources/app ...');
+console.log('5. Packaging clean application bundle to core/resources/app ...');
 mkdirSync(appDir, { recursive: true });
 cpSync(join(root, 'dist'), join(appDir, 'dist'), { recursive: true });
 cpSync(join(root, 'dist-server'), join(appDir, 'dist-server'), { recursive: true });
@@ -69,19 +78,31 @@ writeFileSync(join(appDir, 'package.json'), JSON.stringify({
   main: 'desktop/main.cjs'
 }, null, 2));
 
-console.log('5. Copying production server dependencies...');
-cpSync(join(root, 'node_modules'), join(appDir, 'node_modules'), {
-  recursive: true,
-  filter: (src) => {
-    const normalized = src.replace(/\\/g, '/');
-    if (normalized.includes('/node_modules/electron/dist')) return false;
-    if (normalized.includes('/node_modules/rcedit')) return false;
-    if (normalized.includes('/.bin')) return false;
-    return true;
-  }
-});
+console.log('6. Slimming: Copying minimal production runtime dependencies (saving ~200MB) ...');
+const prodSource = 'D:/Antigravity-work/temp_prod_modules/node_modules';
+const targetModules = join(appDir, 'node_modules');
 
-console.log('6. Compiling top-level Bilight.exe launcher in D:\\software\\Bilight ...');
+if (existsSync(prodSource)) {
+  cpSync(prodSource, targetModules, { recursive: true });
+} else {
+  // Fallback: copy only essential server runtime packages
+  const runtimePkgs = [
+    'fastify', '@fastify', 'fast-xml-parser', 'tough-cookie', 'strnum',
+    'tldts', 'tldts-core', 'abstract-logging', 'avvio', 'fastq', 'find-my-way',
+    'light-my-request', 'pino', 'pino-std-serializers', 'process-warning',
+    'quick-format-unescaped', 'real-require', 'reusify', 'rfdc', 'secure-json-parse',
+    'semver', 'set-cookie-parser', 'sonic-boom', 'split2', 'thread-stream', 'atomic-sleep'
+  ];
+  mkdirSync(targetModules, { recursive: true });
+  for (const pkg of runtimePkgs) {
+    const src = join(root, 'node_modules', pkg);
+    if (existsSync(src)) {
+      cpSync(src, join(targetModules, pkg), { recursive: true });
+    }
+  }
+}
+
+console.log('7. Compiling top-level Bilight.exe launcher in D:\\software\\Bilight ...');
 const cleanMainExe = join(bilightDir, 'Bilight.exe');
 const launcherCs = join(root, 'desktop/launcher.cs');
 if (existsSync(cscExe) && existsSync(launcherCs)) {
@@ -94,9 +115,19 @@ if (existsSync(cscExe) && existsSync(launcherCs)) {
   ], { stdio: 'inherit' });
 }
 
+function getDirSize(dir) {
+  let size = 0;
+  for (const item of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, item.name);
+    if (item.isDirectory()) size += getDirSize(p);
+    else size += statSync(p).size;
+  }
+  return size;
+}
+
+const finalCoreMb = (getDirSize(coreDir) / 1024 / 1024).toFixed(2);
 console.log('=====================================================');
-console.log('SUCCESS! Folder structure in D:\\software\\Bilight:');
+console.log(`SLIMMED PACKAGE COMPLETE: core directory is only ${finalCoreMb} MB!`);
+console.log('Structure:');
 console.log('  D:\\software\\Bilight\\Bilight.exe (主程序入口，萌系二次元图标)');
-console.log('  D:\\software\\Bilight\\core\\       (底层引擎、DLL及组件目录)');
-console.log('  D:\\software\\Bilight\\data\\       (用户独立数据及缓存目录)');
-console.log('=====================================================');
+console.log('  D:\\software\\Bilight\\core\\       (精简瘦身后的核心运行库与组件)');
